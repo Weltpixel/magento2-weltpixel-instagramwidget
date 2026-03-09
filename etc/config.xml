@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <weltpixel_instagram>
+            <general>
+                <tokens></tokens>
+                <tokens_info></tokens_info>
+            </general>
+            <cron_settings>
+                <enabled>0</enabled>
+                <frequency>D</frequency>
+                <time>03:00</time>
+            </cron_settings>
+        </weltpixel_instagram>
+    </default>
+</config>

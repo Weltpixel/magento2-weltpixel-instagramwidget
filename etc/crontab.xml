@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="default">
+        <job name="weltpixel_instagramwidget_tokenrefresh" instance="WeltPixel\InstagramWidget\Cron\TokenRefresh" method="execute" >
+            <schedule>15 0 1 * *</schedule>
+        </job>
+        <job name="weltpixel_instagram_cache_cleanup" instance="WeltPixel\InstagramWidget\Cron\CleanCache" method="execute">
+            <config_path>crontab/default/jobs/weltpixel_instagram_cache_cleanup/schedule/cron_expr</config_path>
+        </job>
+    </group>
+</config>
+

@@ -1,0 +1,16 @@
+<?php
+/** @var $block \WeltPixel\InstagramWidget\Block\Adminhtml\System\Config\ClearCache */
+?>
+<div class="actions actions-clear-cache">
+    <?= $block->getButtonHtml() ?>
+</div>
+
+<script type="text/x-magento-init">
+    {
+        "*": {
+            "WeltPixel_InstagramWidget/js/clear-cache": {
+                "ajaxUrl": "<?= $block->escapeJs($block->getAjaxUrl()) ?>"
+            }
+        }
+    }
+</script> 

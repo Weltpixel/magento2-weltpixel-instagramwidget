@@ -1,0 +1,31 @@
+<?php
+/** @var $block \WeltPixel\InstagramWidget\Block\Adminhtml\System\Config\CronExpr */
+?>
+<div class="cron-expression-info">
+    <strong><?= $block->escapeHtml(__('Current Cron Expression: ')) ?></strong>
+    <code><?= $block->escapeHtml($block->getCronExpr()) ?></code>
+    <div class="note">
+        <span><?= $block->escapeHtml(__('This is the actual cron expression that will be used to schedule the cache cleanup.')) ?></span>
+    </div>
+</div>
+
+<style>
+    .cron-expression-info {
+        padding: 10px;
+        background: #f8f8f8;
+        border: 1px solid #e3e3e3;
+        border-radius: 3px;
+        margin-top: 5px;
+    }
+    .cron-expression-info code {
+        background: #e7e7e7;
+        padding: 2px 5px;
+        border-radius: 3px;
+        margin: 0 5px;
+    }
+    .cron-expression-info .note {
+        margin-top: 5px;
+        color: #666;
+        font-size: 12px;
+    }
+</style> 

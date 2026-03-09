@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="weltpixel_instagram" translate="label" type="text" sortOrder="170" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>Instagram Widget</label>
+            <tab>weltpixel</tab>
+            <resource>WeltPixel_Instagram::InstagramSettings</resource>
+            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Instagram Widget Settings</label>
+                <field id="tokens" translate="label" type="select" sortOrder="0" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Tokens</label>
+                    <frontend_model>WeltPixel\InstagramWidget\Block\Adminhtml\Form\Field\InstagramToken</frontend_model>
+                    <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model>
+                </field>
+                <field id="clear_cache" translate="label" type="button" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Clear Images Cache</label>
+                    <frontend_model>WeltPixel\InstagramWidget\Block\Adminhtml\System\Config\ClearCache</frontend_model>
+                </field>
+            </group>
+            <group id="cron_settings" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Cache Cleanup Settings</label>
+                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Automatic Cache Cleanup</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="frequency" translate="label" type="select" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Frequency</label>
+                    <source_model>WeltPixel\InstagramWidget\Model\Config\Source\Frequency</source_model>
+                    <backend_model>WeltPixel\InstagramWidget\Model\Config\Backend\Cron</backend_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="time" translate="label" type="time" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Start Time</label>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="cron_expr_display" translate="label comment" type="text" sortOrder="40" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <frontend_model>WeltPixel\InstagramWidget\Block\Adminhtml\System\Config\CronExpr</frontend_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>
