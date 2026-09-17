@@ -199,10 +199,18 @@
     }
 
     function request_data(url, options, callback){
+        /**
+         * Feed options only. The server builds the Instagram API url itself from a pinned host,
+         * so there is no url here for the browser to influence.
+         */
         $.get(
             options.instaServerFetchImageUrl + 'fetch/images',
             {
-                instaFetchUrl: url + '?access_token=' + options.token + '&items=' + options.items + '&hashTagFilter=' + options.hashTagFilter +'&useHashTagFilter=' + options.useHashTagFilter + '&showVideos=' + options.show_videos
+                access_token: options.token,
+                items: options.items,
+                hashTagFilter: options.hashTagFilter,
+                useHashTagFilter: options.useHashTagFilter,
+                showVideos: options.show_videos
             },
             function(response){
                 data = parse_response(response);

@@ -50,6 +50,14 @@ class Cron extends Value
         $time = $this->getData('groups/cron_settings/fields/time/value');
         $frequency = $this->getData('groups/cron_settings/fields/frequency/value');
 
+        /** The time field posts an array of hour, minute, second. Anything else is not usable. */
+        if (!is_array($time) || !isset($time[0], $time[1])) {
+            $time = [0, 0, 0];
+        }
+        if (!is_scalar($frequency)) {
+            $frequency = '';
+        }
+
         $cronExprArray = [
             intval($time[1]), // Minute
             $this->getHourPart($frequency, intval($time[0])), // Hour

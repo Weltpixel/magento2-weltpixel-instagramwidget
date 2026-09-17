@@ -13,9 +13,18 @@ $showVideos = ($this->getData('show_videos')) ? true : false;
 $showLikeCount = ($this->getData('show_like_count')) ? true : false;
 $description = trim($this->getData('description') ?? '');
 $backgroundColor = trim($this->getData('background_color') ?? '');
+/**
+ * The value lands inside a style attribute, where escaping alone still allows a semicolon to
+ * close the declaration and start another. Colors only: anything carrying ; : quotes or a
+ * backslash is dropped rather than rendered.
+ */
+if ($backgroundColor !== '' && !preg_match('/^[#A-Za-z0-9(),.%\/\s-]+$/', $backgroundColor)) {
+    $backgroundColor = '';
+}
 $title = trim($this->getData('title') ?? '');
 $limit = intval($this->getData('limit') ?? '');
-$token = $this->getInstagramToken();
+/** A reference to the token, resolved server side. The token itself never reaches the page. */
+$token = $this->getInstagramTokenRef();
 $imagesAltTag = $this->getData('images_alt_text') ?? '0';
 $imagesAltLabel = '';
 $useHashTagFilter = ($this->getData('use_hashtag_filter')) ? true : false;
@@ -63,22 +72,22 @@ switch ($imagesAltTag) {
             if( $instagramPhotosEl.length > 0 ){
 
                 $instagramPhotosEl.each(function() {
-                    var instaGramTarget ='#<?php /* @noEscape */ echo $uniqueid; ?>',
-                        instaServerFetchImageUrl = '<?php /* @noEscape */ echo $serverInstagramUrl ?>',
-                        instaGramCount = <?php /* @noEscape */ echo $limit ?>,
-                        instagramToken = '<?php /* @noEscape */ echo $token ?>',
-                        instaImageNewTab = '<?php /* @noEscape */ echo $openImagesInNewTab ?>',
-                        instaImagePadding = '<?php /* @noEscape */ echo $imagesHavePadding ?>',
-                        useImageShuffle = '<?php /* @noEscape */ echo $useImageShuffle ?>',
-                        useImageCaption = '<?php /* @noEscape */ echo $imagesHaveCaption ?>',
-                        useImageLazyLoad = '<?php /* @noEscape */ echo $useImageLazyLoad ?>',
-                        showVideos = '<?php /* @noEscape */ echo $showVideos ?>',
-                        showLikeCount = '<?php /* @noEscape */ echo $showLikeCount ?>',
-                        lazyLoadPlaceholderWidth = '<?php /* @noEscape */ echo $lazyloadPlaceholderWidth ?>',
-                        useHashTagFilter = '<?php /* @noEscape */ echo $useHashTagFilter ?>',
-                        hashTagFilter = '<?php /* @noEscape */ echo $hashTagFilter ?>',
-                        instaImageAltTag = <?php /* @noEscape */ echo $imagesAltTag ?>,
-                        instaImageAltLabel = '<?php /* @noEscape */ echo $imagesAltLabel ?>';
+                    var instaGramTarget ='#<?= $block->escapeJs($uniqueid) ?>',
+                        instaServerFetchImageUrl = '<?= $block->escapeJs($serverInstagramUrl) ?>',
+                        instaGramCount = <?= (int)$limit ?>,
+                        instagramToken = '<?= $block->escapeJs($token) ?>',
+                        instaImageNewTab = '<?= $block->escapeJs($openImagesInNewTab) ?>',
+                        instaImagePadding = '<?= $block->escapeJs($imagesHavePadding) ?>',
+                        useImageShuffle = '<?= $block->escapeJs($useImageShuffle) ?>',
+                        useImageCaption = '<?= $block->escapeJs($imagesHaveCaption) ?>',
+                        useImageLazyLoad = '<?= $block->escapeJs($useImageLazyLoad) ?>',
+                        showVideos = '<?= $block->escapeJs($showVideos) ?>',
+                        showLikeCount = '<?= $block->escapeJs($showLikeCount) ?>',
+                        lazyLoadPlaceholderWidth = '<?= $block->escapeJs($lazyloadPlaceholderWidth) ?>',
+                        useHashTagFilter = '<?= $block->escapeJs($useHashTagFilter) ?>',
+                        hashTagFilter = '<?= $block->escapeJs($hashTagFilter) ?>',
+                        instaImageAltTag = <?= (int)$imagesAltTag ?>,
+                        instaImageAltLabel = '<?= $block->escapeJs($imagesAltLabel) ?>';
 
 
                     if( !instaGramCount ) { instaGramCount = 6; }

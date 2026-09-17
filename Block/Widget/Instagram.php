@@ -10,18 +10,26 @@ class Instagram extends \Magento\Framework\View\Element\Template implements \Mag
     protected $_serializer;
 
     /**
+     * @var \WeltPixel\InstagramWidget\Model\TokenResolver
+     */
+    protected $_tokenResolver;
+
+    /**
      * Instagram constructor.
      * @param \Magento\Framework\Serialize\Serializer\Json $_serializer
      * @param \Magento\Framework\View\Element\Template\Context $context
+     * @param \WeltPixel\InstagramWidget\Model\TokenResolver|null $tokenResolver
      * @param array $data
      */
     public function __construct(
         \Magento\Framework\Serialize\Serializer\Json $_serializer,
         \Magento\Framework\View\Element\Template\Context $context,
+        \WeltPixel\InstagramWidget\Model\TokenResolver $tokenResolver,
         array $data = []
     )
     {
         $this->_serializer = $_serializer;
+        $this->_tokenResolver = $tokenResolver;
         parent::__construct($context, $data);
     }
 
@@ -82,5 +90,32 @@ class Instagram extends \Magento\Framework\View\Element\Template implements \Mag
         }
 
         return $token;
+    }
+
+    /**
+     * A reference to the access token, for the markup to publish instead of the token itself.
+     *
+     * Falls back to the token when no reference can be produced, which keeps widgets working
+     * that hold a token directly rather than choosing one configured in the module settings.
+     * A reference is only returned once it has been confirmed to resolve back to a token, so
+     * this can never publish a reference the controller would fail to understand.
+     *
+     * @return string
+     */
+    public function getInstagramTokenRef()
+    {
+        if ($this->getData('use_predefined_token')) {
+            $name = $this->_tokenResolver->sanitizeName($this->getData('predefined_token'));
+            if ($this->_tokenResolver->resolveByName($name)) {
+                return $this->_tokenResolver->makeRef($name);
+            }
+        }
+
+        $name = $this->_tokenResolver->findNameForValue($this->getData('token'));
+        if ($name !== null) {
+            return $this->_tokenResolver->makeRef($name);
+        }
+
+        return (string)$this->getInstagramToken();
     }
 }

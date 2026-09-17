@@ -5,7 +5,7 @@
 		"magento/module-widget": "*"
 	},
 	"type": "magento2-module",
-	"version": "1.16.0",
+	"version": "1.17.5",
 	"license": "MIT",
 	"autoload": {
 		"files": [

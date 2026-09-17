@@ -4,126 +4,277 @@ namespace WeltPixel\InstagramWidget\Controller\Fetch;
 
 use Magento\Framework\App\Action\Action;
 use Magento\Framework\App\Action\Context;
+use Magento\Framework\App\Action\HttpGetActionInterface;
+use WeltPixel\InstagramWidget\Model\Api\GraphClient;
 use WeltPixel\InstagramWidget\Model\InstagramWidgetCache;
+use WeltPixel\InstagramWidget\Model\TokenResolver;
 
-class Images extends Action
+/**
+ * Storefront proxy for the Instagram media feed.
+ *
+ * The browser supplies feed options only. The request URL is always built server side against
+ * the pinned Graph API host, so this endpoint cannot be used to make the store fetch an
+ * arbitrary address.
+ */
+class Images extends Action implements HttpGetActionInterface
 {
+    /**
+     * Upper bound on the number of items a caller may request
+     */
+    public const MAX_ITEMS = 100;
+
+    public const DEFAULT_ITEMS = 10;
+
+    /**
+     * Upper bound on API round trips per request, so paging cannot be used to tie up a worker
+     */
+    public const MAX_PAGES = 10;
+
     /**
      * @var InstagramWidgetCache
      */
     protected $instagramWidgetCache;
 
     /**
-     * Content constructor.
+     * @var GraphClient
+     */
+    protected $graphClient;
+
+    /**
+     * @var TokenResolver
+     */
+    protected $tokenResolver;
+
+    /**
+     * Images constructor.
+     *
      * @param Context $context
      * @param InstagramWidgetCache $instagramWidgetCache
+     * @param GraphClient $graphClient
+     * @param TokenResolver|null $tokenResolver
      */
     public function __construct(
         Context $context,
-        InstagramWidgetCache $instagramWidgetCache
+        InstagramWidgetCache $instagramWidgetCache,
+        GraphClient $graphClient,
+        TokenResolver $tokenResolver
     ) {
         $this->instagramWidgetCache = $instagramWidgetCache;
+        $this->graphClient = $graphClient;
+        $this->tokenResolver = $tokenResolver;
         parent::__construct($context);
     }
 
     /**
-     * @return \Magento\Framework\App\ResponseInterface|\Magento\Framework\Controller\ResultInterface|string
-     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     * @return void
      */
     public function execute()
     {
-        $instaFetchUrl = $this->getRequest()->getParam('instaFetchUrl');
+        $params = $this->resolveParams();
 
-        if (!$instaFetchUrl) {
-            return $this->prepareResult([]);
+        $accessToken = $this->resolveAccessToken($params['access_token']);
+        if (!$this->graphClient->isValidToken($accessToken)) {
+            $this->prepareResult([]);
+            return;
         }
 
-        $urlQueryStrings = parse_url($instaFetchUrl);
-        parse_str($urlQueryStrings['query'], $urlQueryParams);
+        $maxItems = $params['items'];
+        $showVideos = $params['showVideos'];
+        $useHashTagFilter = $params['useHashTagFilter'];
+        $hashTagFilter = $params['hashTagFilter'];
 
-        $accessToken = $urlQueryParams['access_token'] ?? '';
-        $maxItems = $urlQueryParams['items'] ?? '10';
-        $hashTagFilter = $urlQueryParams['hashTagFilter'] ?? '';
-        $useHashTagFilter = $urlQueryParams['useHashTagFilter'] ?? '0';
-        $showVideos = !empty($urlQueryParams['showVideos']) ? $urlQueryParams['showVideos'] : '0';
+        $hashTagPattern = ($useHashTagFilter && $hashTagFilter !== '')
+            ? '/#' . preg_quote($hashTagFilter, '/') . '(\s|$)/i'
+            : null;
 
-        if (!$accessToken) {
-            return $this->prepareResult([]);
-        }
+        $detailUrlTemplate = $this->graphClient->buildMediaDetailUrlTemplate($accessToken);
 
-        $mediaImageDataFetchUrl = $urlQueryStrings['scheme'] . '://' . $urlQueryStrings['host'] . '/' . '{{IG_MEDIA_ID}}' . '?fields=caption,media_type,media_url,like_count,permalink&access_token=' . $accessToken;
+        $collectedImages = [];
+        $after = null;
+        $page = 0;
 
         try {
-            $collectedImages = [];
-            $nextUrl = $instaFetchUrl;
-            $hashTagPattern = ($useHashTagFilter == 1) && $hashTagFilter ? '/#' . preg_quote($hashTagFilter, '/') . '(\s|$)/i' : null;
+            do {
+                $response = $this->graphClient->get(
+                    $this->graphClient->buildMediaListUrl($accessToken, $after, $maxItems)
+                );
 
-            while ($nextUrl && count($collectedImages) < $maxItems) {
-                $ch = curl_init($nextUrl);
-                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                if (!is_array($response) || empty($response['data']) || !is_array($response['data'])) {
+                    break;
+                }
 
-                $result = curl_exec($ch);
-                $response = json_decode($result, true);
+                foreach ($response['data'] as $data) {
+                    if (empty($data['id'])) {
+                        continue;
+                    }
 
-                if (isset($response['data'])) {
-                    foreach ($response['data'] as $key => $data) {
-                        $imageData = $this->instagramWidgetCache->getInstagramContentByCacheId($data['id']);
-                        if ($imageData) {
-                            $imageData = json_decode($imageData, true);
-                        } else {
-                            $imageData = $this->instagramWidgetCache->fetchInstagramImageDetails($mediaImageDataFetchUrl, $data['id']);
-                            $this->instagramWidgetCache->saveInstagramContentByCacheId($data['id'], json_encode($imageData));
-                        }
+                    $imageData = $this->loadImageData($detailUrlTemplate, $data['id']);
+                    if (!is_array($imageData)) {
+                        continue;
+                    }
 
-                        if (($showVideos == 0) && strtoupper($imageData['media_type']) == 'VIDEO') {
+                    if (!$showVideos && strtoupper($imageData['media_type'] ?? '') == 'VIDEO') {
+                        continue;
+                    }
+
+                    if ($hashTagPattern !== null) {
+                        $caption = isset($imageData['caption']) ? (string)$imageData['caption'] : '';
+                        if (!preg_match($hashTagPattern, $caption)) {
                             continue;
                         }
+                    }
 
-                        // Hashtag filtering
-                        if ($useHashTagFilter && $hashTagPattern) {
-                            $caption = isset($imageData['caption']) ? $imageData['caption'] : '';
-                            if (!preg_match($hashTagPattern, $caption)) {
-                                continue;
-                            }
-                        }
-                        $collectedImages[] = $imageData;
-                        if (count($collectedImages) >= $maxItems) {
-                            break;
-                        }
+                    $collectedImages[] = $imageData;
+                    if (count($collectedImages) >= $maxItems) {
+                        break;
                     }
                 }
 
-                // Check for next page
-                if (isset($response['paging']['next']) && count($collectedImages) < $maxItems) {
-                    $nextUrl = $response['paging']['next'];
-                } else {
-                    $nextUrl = null;
-                }
-            }
-
-            $result = ['data' => $collectedImages];
+                $after = $this->graphClient->extractAfterCursor($response['paging']['next'] ?? null);
+                $page++;
+            } while ($after !== null && $page < self::MAX_PAGES && count($collectedImages) < $maxItems);
         } catch (\Exception $ex) {
-            return $this->prepareResult([]);
+            $this->prepareResult([]);
+            return;
         }
 
-        return $this->prepareResult($result);
+        $this->prepareResult(['data' => $collectedImages]);
     }
 
     /**
-     * @param string $imageUrl
-     * @param string $imageId
-     * @return false|mixed
+     * Turn the value the markup published into an access token.
+     *
+     * Current widget markup publishes a reference to a token configured in the module settings,
+     * and the token is read here rather than travelling through the browser. Markup produced
+     * before this release, and any template a merchant has forked, still sends the token itself,
+     * so that form is accepted unchanged.
+     *
+     * @param string $value
+     * @return string
      */
+    protected function resolveAccessToken($value)
+    {
+        if (!$this->tokenResolver->isRef($value)) {
+            return $value;
+        }
 
+        $name = $this->tokenResolver->extractName($value);
+        if ($name === null) {
+            return '';
+        }
+
+        return (string)$this->tokenResolver->resolveByName($name);
+    }
+
+    /**
+     * Read feed options from the request.
+     *
+     * Options may arrive either as plain request parameters or, for widget markup rendered before
+     * this module was updated, inside the query string of a legacy instaFetchUrl parameter. In the
+     * legacy case only the query string is read; the scheme, host and path are discarded.
+     *
+     * @return array
+     */
+    protected function resolveParams()
+    {
+        $request = $this->getRequest();
+        $source = [];
+
+        $legacyUrl = $request->getParam('instaFetchUrl');
+        if (is_string($legacyUrl) && $legacyUrl !== '') {
+            $query = parse_url($legacyUrl, PHP_URL_QUERY);
+            if (is_string($query) && $query !== '') {
+                parse_str($query, $source);
+            }
+        }
+
+        foreach (['access_token', 'items', 'hashTagFilter', 'useHashTagFilter', 'showVideos'] as $key) {
+            $value = $request->getParam($key);
+            if ($value !== null) {
+                $source[$key] = $value;
+            }
+        }
+
+        return [
+            'access_token' => $this->scalarParam($source, 'access_token'),
+            'items' => $this->itemsParam($source),
+            'hashTagFilter' => $this->scalarParam($source, 'hashTagFilter'),
+            'useHashTagFilter' => $this->boolParam($source, 'useHashTagFilter'),
+            'showVideos' => $this->boolParam($source, 'showVideos')
+        ];
+    }
+
+    /**
+     * @param array $source
+     * @param string $key
+     * @return string
+     */
+    protected function scalarParam(array $source, $key)
+    {
+        $value = $source[$key] ?? '';
+
+        return is_scalar($value) ? trim((string)$value) : '';
+    }
+
+    /**
+     * The widget sends 'false' and 'true' as strings, and older markup sends '0' and '1'.
+     *
+     * @param array $source
+     * @param string $key
+     * @return bool
+     */
+    protected function boolParam(array $source, $key)
+    {
+        $value = strtolower($this->scalarParam($source, $key));
+
+        return !in_array($value, ['', '0', 'false', 'null', 'undefined'], true);
+    }
+
+    /**
+     * @param array $source
+     * @return int
+     */
+    protected function itemsParam(array $source)
+    {
+        $items = (int)$this->scalarParam($source, 'items');
+
+        if ($items < 1) {
+            $items = self::DEFAULT_ITEMS;
+        }
+
+        return min($items, self::MAX_ITEMS);
+    }
+
+    /**
+     * Read one media item from the cache table, fetching and caching it on a miss.
+     *
+     * @param string $detailUrlTemplate
+     * @param string $mediaId
+     * @return array|null
+     */
+    protected function loadImageData($detailUrlTemplate, $mediaId)
+    {
+        $cached = $this->instagramWidgetCache->getInstagramContentByCacheId($mediaId);
+        if ($cached) {
+            $decoded = json_decode($cached, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        $imageData = $this->instagramWidgetCache->fetchInstagramImageDetails($detailUrlTemplate, $mediaId);
+        if (!is_array($imageData)) {
+            return null;
+        }
+
+        $this->instagramWidgetCache->saveInstagramContentByCacheId($mediaId, json_encode($imageData));
+
+        return $imageData;
+    }
 
     /**
      * @param array $result
-     * @return string
+     * @return void
      */
     protected function prepareResult($result)
     {

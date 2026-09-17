@@ -3,10 +3,11 @@ namespace WeltPixel\InstagramWidget\Controller\Adminhtml\System\Config;
 
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
+use Magento\Framework\App\Action\HttpPostActionInterface;
 use WeltPixel\InstagramWidget\Model\InstagramWidgetCache;
 use Magento\Framework\Controller\Result\JsonFactory;
 
-class ClearCache extends Action
+class ClearCache extends Action implements HttpPostActionInterface
 {
     /**
      * @var InstagramWidgetCache

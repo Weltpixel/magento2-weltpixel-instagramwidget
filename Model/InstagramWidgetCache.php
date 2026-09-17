@@ -3,6 +3,7 @@ namespace WeltPixel\InstagramWidget\Model;
 
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
+use WeltPixel\InstagramWidget\Model\Api\GraphClient;
 
 class InstagramWidgetCache
 {
@@ -34,20 +35,28 @@ class InstagramWidgetCache
     protected $serializer;
 
     /**
+     * @var GraphClient
+     */
+    protected $graphClient;
+
+    /**
      * @param ResourceConnection $resource
      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
      * @param \Magento\Framework\Serialize\Serializer\Json $serializer
+     * @param GraphClient|null $graphClient
      */
     public function __construct(
         ResourceConnection $resource,
         \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
-        \Magento\Framework\Serialize\Serializer\Json $serializer
+        \Magento\Framework\Serialize\Serializer\Json $serializer,
+        GraphClient $graphClient
     ) {
         $this->resource = $resource;
         $this->connection = $resource->getConnection();
         $this->instagramCacheTableName = 'weltpixel_instagram_cache';
         $this->scopeConfig = $scopeConfig;
         $this->serializer = $serializer;
+        $this->graphClient = $graphClient;
     }
 
     /**
@@ -77,23 +86,11 @@ class InstagramWidgetCache
      */
     public function fetchInstagramImageDetails($imageUrl, $imageId)
     {
-        $imageUrl = str_replace('{{IG_MEDIA_ID}}', $imageId, $imageUrl);
-        try {
-            $ch = curl_init($imageUrl);
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $imageUrl = str_replace(GraphClient::MEDIA_ID_PLACEHOLDER, rawurlencode((string)$imageId), (string)$imageUrl);
 
-            $result = curl_exec($ch);
-            curl_close($ch);
-            $response = json_decode($result, true);
-        } catch (\Exception $ex) {
-            return false;
-        }
-        return $response;
+        $response = $this->graphClient->get($imageUrl);
+
+        return is_array($response) ? $response : false;
     }
 
     /**
@@ -166,30 +163,24 @@ class InstagramWidgetCache
         }
 
         foreach ($tokens as $accessToken) {
-            $mediaApiUrl = 'https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,permalink,thumbnail_url,timestamp&access_token=' . $accessToken;
+            if (!$this->graphClient->isValidToken($accessToken)) {
+                continue;
+            }
+
             $iteration = 0;
-            $nextUrl = $mediaApiUrl;
+            $after = null;
+            $mediaDetailBaseUrl = $this->graphClient->buildMediaDetailUrlTemplate($accessToken);
+
             do {
-                try {
-                    $ch = curl_init($nextUrl);
-                    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-                    $result = curl_exec($ch);
-                    curl_close($ch);
-                    $response = json_decode($result, true);
-                } catch (\Exception $ex) {
-                    break;
-                }
+                $response = $this->graphClient->get(
+                    $this->graphClient->buildMediaListUrl($accessToken, $after)
+                );
+
                 if (!isset($response['data']) || !is_array($response['data'])) {
                     break;
                 }
 
                 // Step 2: For each media, fetch details and store
-                $mediaDetailBaseUrl = 'https://graph.instagram.com/{{IG_MEDIA_ID}}?fields=caption,media_type,media_url,like_count,permalink&access_token=' . $accessToken;
                 foreach ($response['data'] as $mediaItem) {
                     if (empty($mediaItem['id'])) {
                         continue;
@@ -200,8 +191,8 @@ class InstagramWidgetCache
                     }
                 }
                 $iteration++;
-                $nextUrl = isset($response['paging']['next']) ? $response['paging']['next'] : null;
-            } while ($nextUrl && $iteration < self::MAX_PAGING_ITERATIONS);
+                $after = $this->graphClient->extractAfterCursor($response['paging']['next'] ?? null);
+            } while ($after !== null && $iteration < self::MAX_PAGING_ITERATIONS);
         }
     }
 }

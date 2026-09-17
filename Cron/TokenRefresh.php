@@ -38,6 +38,11 @@ class TokenRefresh
     protected $_widgetCache;
 
     /**
+     * @var \WeltPixel\InstagramWidget\Model\Api\GraphClient
+     */
+    protected $_graphClient;
+
+    /**
      * Tokens constructor.
      * @param \Magento\Framework\Serialize\Serializer\Json $serializer
      * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig
@@ -45,6 +50,7 @@ class TokenRefresh
      * @param \Magento\Framework\Stdlib\DateTime\DateTime $dateTime
      * @param \Magento\Framework\App\Cache\TypeListInterface $cacheTypeList
      * @param \WeltPixel\InstagramWidget\Model\InstagramWidgetCache $widgetCache
+     * @param \WeltPixel\InstagramWidget\Model\Api\GraphClient|null $graphClient
      */
     public function __construct(
         \Magento\Framework\Serialize\Serializer\Json $serializer,
@@ -52,9 +58,11 @@ class TokenRefresh
         \Magento\Framework\App\Config\Storage\WriterInterface $configWriter,
         \Magento\Framework\Stdlib\DateTime\DateTime $dateTime,
         \Magento\Framework\App\Cache\TypeListInterface $cacheTypeList,
-        \WeltPixel\InstagramWidget\Model\InstagramWidgetCache $widgetCache
+        \WeltPixel\InstagramWidget\Model\InstagramWidgetCache $widgetCache,
+        \WeltPixel\InstagramWidget\Model\Api\GraphClient $graphClient
     )
     {
+        $this->_graphClient = $graphClient;
         $this->_serializer = $serializer;
         $this->_scopeConfig = $scopeConfig;
         $this->_configWriter = $configWriter;
@@ -99,28 +107,26 @@ class TokenRefresh
      */
     protected function _generateToken($oldToken)
     {
-        $urlEndpoint = 'https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=' . $oldToken;
-        try {
-            $ch = curl_init($urlEndpoint);
-
-            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-
-            $result = curl_exec($ch);
-            $response = json_decode($result, true);
-            if (isset($response['access_token'])) {
-                return [
-                    'token' => $response['access_token'],
-                    'expires_in' => $response['expires_in']
-                ];
-            }
-            return false;
-        } catch (\Exception $ex) {
+        if (!$this->_graphClient->isValidToken($oldToken)) {
             return false;
         }
+
+        /** Sent over a verified TLS connection: this request carries a live access token */
+        $urlEndpoint = 'https://' . \WeltPixel\InstagramWidget\Model\Api\GraphClient::API_HOST
+            . '/refresh_access_token?' . http_build_query([
+                'grant_type' => 'ig_refresh_token',
+                'access_token' => $oldToken
+            ]);
+
+        $response = $this->_graphClient->get($urlEndpoint);
+
+        if (isset($response['access_token'])) {
+            return [
+                'token' => $response['access_token'],
+                'expires_in' => $response['expires_in'] ?? 0
+            ];
+        }
+
+        return false;
     }
 }
